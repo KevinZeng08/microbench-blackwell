@@ -18,11 +18,20 @@ all: umma_tput.out
 umma_tput.out: umma_tput.cu
 	$(NVCC) $(NVCCFLAGS) $(DEFINES) -o $@ $<
 
+umma_ws_tput.out: umma_ws_tput.cu
+	$(NVCC) $(NVCCFLAGS) $(DEFINES) -o $@ $<
+
 ptx: umma_tput.cu
 	$(NVCC) $(NVCCFLAGS) $(DEFINES) -ptx -o umma_tput.ptx $<
 
+ws-ptx: umma_ws_tput.cu
+	$(NVCC) $(NVCCFLAGS) $(DEFINES) -ptx -o umma_ws_tput.ptx $<
+
 run: umma_tput.out
 	./umma_tput.out
+
+ws-run: umma_ws_tput.out
+	./umma_ws_tput.out
 
 prof: umma_tput.out
 	sudo ncu --clock-control none --metrics sm__sass_inst_executed_op_utcmma.sum.per_cycle_elapsed,sm__sass_inst_executed_op_utcmma.sum.pct_of_peak_sustained_active,sm__sass_inst_executed_op_utcmma.sum.pct_of_peak_sustained_elapsed ./umma_tput.out
@@ -30,4 +39,4 @@ prof: umma_tput.out
 clean:
 	rm -f *.out *.ptx
 
-.PHONY: all run ptx prof clean
+.PHONY: all run ptx prof clean ws-ptx ws-run
