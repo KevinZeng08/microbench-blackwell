@@ -1,9 +1,11 @@
-// tcgen05.mma.ws throughput microbenchmark (1SM, dense, collector default discard)
+// tcgen05.mma.ws throughput microbenchmark (1SM, dense)
+// Collector: WS_COLLECTOR=0 omit qualifier (b0 discard); =1 b0 fill / use / lastuse
 // Compile-time macros:
 //   MMA_FORMAT: 0=BF16, 1=TF32, 2=E4M3, 3=S8, 4=F4
 //   MMA_M: 32, 64, 128
 //   MMA_N: 64, 128, 256
 //   AB_LAYOUT: 0=SS (A from SMEM), 1=TS (A from TMEM)
+//   WS_COLLECTOR: 0=b0 discard (default), 1=b0 fill/use/lastuse
 //   CTA_GROUP must be 1
 
 #include <cstdio>
@@ -33,9 +35,14 @@
 #ifndef AB_LAYOUT
 #error "AB_LAYOUT must be defined (0=SS_MODE, 1=TS_MODE)"
 #endif
+#ifndef WS_COLLECTOR
+#define WS_COLLECTOR 0
+#endif
 
 #define SS_MODE 0
 #define TS_MODE 1
+#define WS_COLLECTOR_DISCARD 0
+#define WS_COLLECTOR_REUSE   1
 
 #if MMA_FORMAT == 0
     #define MMA_KIND "f16"
@@ -72,6 +79,12 @@
 #endif
 #if MMA_FORMAT == 4 && MMA_K != 64
 #error "F4 requires MMA_K=64"
+#endif
+#if WS_COLLECTOR != WS_COLLECTOR_DISCARD && WS_COLLECTOR != WS_COLLECTOR_REUSE
+#error "WS_COLLECTOR must be 0 (discard) or 1 (b0 fill/use/lastuse)"
+#endif
+#if WS_COLLECTOR == WS_COLLECTOR_REUSE && MMA_DEPTH < 2
+#error "B-collector reuse requires MMA_DEPTH >= 2"
 #endif
 
 enum class MMAFormat : uint8_t {
@@ -293,27 +306,33 @@ void umma_ws_tput_kernel() {
 
 #if AB_LAYOUT == SS_MODE
     uint64_t a_desc = make_smem_desc(A, MMA_M);
-    auto mma = [&](int pred) {
-        asm volatile(
-            "{\n\t"
-            ".reg .pred p;\n\t"
-            "setp.ne.b32 p, %4, 0;\n\t"
-            "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND " [%0], %1, %2, %3, p;\n\t"
-            "}"
-            :: "r"(tmem_d), "l"(a_desc), "l"(b_desc), "r"(i_desc), "r"(pred)
-        );
-    };
+#define ISSUE_MMA_WS(COLLECTOR, pred_var) \
+    asm volatile( \
+        "{\n\t" \
+        ".reg .pred p;\n\t" \
+        "setp.ne.b32 p, %4, 0;\n\t" \
+        "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND COLLECTOR " [%0], %1, %2, %3, p;\n\t" \
+        "}" \
+        :: "r"(tmem_d), "l"(a_desc), "l"(b_desc), "r"(i_desc), "r"(pred_var) \
+    )
 #else
-    auto mma = [&](int pred) {
-        asm volatile(
-            "{\n\t"
-            ".reg .pred p;\n\t"
-            "setp.ne.b32 p, %4, 0;\n\t"
-            "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND " [%0], [%1], %2, %3, p;\n\t"
-            "}"
-            :: "r"(tmem_d), "r"(tmem_a), "l"(b_desc), "r"(i_desc), "r"(pred)
-        );
-    };
+#define ISSUE_MMA_WS(COLLECTOR, pred_var) \
+    asm volatile( \
+        "{\n\t" \
+        ".reg .pred p;\n\t" \
+        "setp.ne.b32 p, %4, 0;\n\t" \
+        "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND COLLECTOR " [%0], [%1], %2, %3, p;\n\t" \
+        "}" \
+        :: "r"(tmem_d), "r"(tmem_a), "l"(b_desc), "r"(i_desc), "r"(pred_var) \
+    )
+#endif
+
+#if WS_COLLECTOR == WS_COLLECTOR_DISCARD
+    auto mma = [&](int pred) { ISSUE_MMA_WS("", pred); };
+#else
+    auto mma_fill = [&](int pred) { ISSUE_MMA_WS(".collector::b0::fill", pred); };
+    auto mma_use = [&](int pred) { ISSUE_MMA_WS(".collector::b0::use", pred); };
+    auto mma_lastuse = [&](int pred) { ISSUE_MMA_WS(".collector::b0::lastuse", pred); };
 #endif
 
     constexpr int NUM_ITERS = 1000;
@@ -322,11 +341,20 @@ void umma_ws_tput_kernel() {
 
     for (int iter = 0, phase = 0; iter < NUM_ITERS; iter++) {
         if (warp_id == 0 && elect_sync()) {
+#if WS_COLLECTOR == WS_COLLECTOR_DISCARD
             mma(0);
             #pragma unroll
             for (int m = 1; m < MMA_DEPTH; m++) {
                 mma(1);
             }
+#else
+            mma_fill(0);
+            #pragma unroll
+            for (int m = 1; m < MMA_DEPTH - 1; m++) {
+                mma_use(1);
+            }
+            mma_lastuse(1);
+#endif
             asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64 [%0];"
                         :: "r"(mbar_addr) : "memory");
         }

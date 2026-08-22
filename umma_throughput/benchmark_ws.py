@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Benchmark tcgen05.mma.ws throughput (1SM, dense, collector default discard).
-Sweeps formats, SS/TS, and the PTX-legal (M, N) set.
+Benchmark tcgen05.mma.ws throughput (1SM, dense).
+Sweeps formats, SS/TS, PTX-legal (M, N), and B-collector discard vs reuse.
 """
 
 import subprocess
@@ -23,7 +23,7 @@ WS_M = [32, 64, 128]
 WS_N = [64, 128, 256]
 
 CSV_FIELDS = [
-    'Op', 'Format', 'ABLayout', 'CTAGroup', 'M', 'N', 'K',
+    'Op', 'Format', 'ABLayout', 'CTAGroup', 'Collector', 'M', 'N', 'K',
     'PipelineDepth', 'Cycles', 'CyclesPerMMA', 'FLOPsPerCycle',
 ]
 
@@ -32,12 +32,13 @@ def get_mn_configs():
     return [(m, n) for m in WS_M for n in WS_N]
 
 
-def run_benchmark(m, n, mma_format, depth, ab_layout, verbose=False):
+def run_benchmark(m, n, mma_format, depth, ab_layout, collector, verbose=False):
     fmt_info = MMA_FORMATS[mma_format]
     k = fmt_info['k']
     fmt_name = fmt_info['name']
     mode = 'TS' if ab_layout == 1 else 'SS'
-    label = f"WS {fmt_name} {mode} 1SM M={m}, N={n}, depth={depth}"
+    col_name = 'reuse' if collector == 1 else 'discard'
+    label = f"WS {fmt_name} {mode} {col_name} 1SM M={m}, N={n}, depth={depth}"
 
     clean_cmd = ["make", "clean"]
     build_cmd = [
@@ -49,6 +50,7 @@ def run_benchmark(m, n, mma_format, depth, ab_layout, verbose=False):
         f"MMA_DEPTH={depth}",
         "CTA_GROUP=1",
         f"AB_LAYOUT={ab_layout}",
+        f"WS_COLLECTOR={collector}",
     ]
 
     try:
@@ -83,6 +85,7 @@ def run_benchmark(m, n, mma_format, depth, ab_layout, verbose=False):
                         'Format': fmt_name,
                         'ABLayout': mode,
                         'CTAGroup': 1,
+                        'Collector': col_name,
                         'M': M,
                         'N': N,
                         'K': K,
@@ -117,6 +120,8 @@ def main():
                         help='Overwrite CSV instead of appending')
     parser.add_argument('--mode', choices=['ss', 'ts', 'all'], default='all',
                         help='AB layout mode: ss, ts, or all.')
+    parser.add_argument('--collector', choices=['discard', 'reuse', 'all'], default='discard',
+                        help='B collector: discard (default), reuse (b0 fill/use/lastuse), or all.')
     args = parser.parse_args()
 
     for f in args.formats:
@@ -126,11 +131,13 @@ def main():
 
     selected_fmts = {k: v for k, v in MMA_FORMATS.items() if k in args.formats}
     ab_layouts = {'ss': [0], 'ts': [1], 'all': [0, 1]}[args.mode]
+    collectors = {'discard': [0], 'reuse': [1], 'all': [0, 1]}[args.collector]
     mn_configs = get_mn_configs()
 
     total_runs = 0
     for fmt_info in selected_fmts.values():
-        total_runs += len(ab_layouts) * len(mn_configs) * len(fmt_info['depths'])
+        total_runs += (len(ab_layouts) * len(collectors) *
+                       len(mn_configs) * len(fmt_info['depths']))
 
     print(f"Running {total_runs} WS configurations...", file=sys.stderr)
 
@@ -148,19 +155,22 @@ def main():
 
         for ab_layout in ab_layouts:
             mode = 'TS' if ab_layout == 1 else 'SS'
-            print(f"\n=== WS {fmt_name} {mode} 1SM (K={k}) ===", file=sys.stderr)
+            for collector in collectors:
+                col_name = 'reuse' if collector == 1 else 'discard'
+                print(f"\n=== WS {fmt_name} {mode} {col_name} 1SM (K={k}) ===", file=sys.stderr)
 
-            for m, n in mn_configs:
-                for depth in fmt_info['depths']:
-                    result = run_benchmark(m, n, mma_format=fmt_id, depth=depth,
-                                           ab_layout=ab_layout, verbose=args.verbose)
-                    if result:
-                        writer.writerow(result)
-                        csv_file.flush()
-                        result_count += 1
-                        print(f"WS {fmt_name} {mode} 1SM M={m:3d}, N={n:3d}, depth={depth:4d}: "
-                              f"{result['CyclesPerMMA']:.4f} cyc/MMA, "
-                              f"{result['FLOPsPerCycle']:.0f} FLOPs/cyc", file=sys.stderr)
+                for m, n in mn_configs:
+                    for depth in fmt_info['depths']:
+                        result = run_benchmark(m, n, mma_format=fmt_id, depth=depth,
+                                               ab_layout=ab_layout, collector=collector,
+                                               verbose=args.verbose)
+                        if result:
+                            writer.writerow(result)
+                            csv_file.flush()
+                            result_count += 1
+                            print(f"WS {fmt_name} {mode} {col_name} 1SM M={m:3d}, N={n:3d}, "
+                                  f"depth={depth:4d}: {result['CyclesPerMMA']:.4f} cyc/MMA, "
+                                  f"{result['FLOPsPerCycle']:.0f} FLOPs/cyc", file=sys.stderr)
 
     csv_file.close()
 
