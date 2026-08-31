@@ -200,7 +200,7 @@ def main():
                         csv_file.flush()
                         result_count += 1
                         bw_gbps = result['DRAMBandwidthBps'] / 1e9
-                        ipc = result['LDGSTSPerCycle']
+                        ipc = result['LDGSTSWarpPerCycle']
                         print(f"[{run_idx}/{total_runs}] CTAs={ctas:2d}, stages={stages}, "
                               f"threads={threads:4d}, load={load_t:6s}: "
                               f"{bw_gbps:.2f} GB/s, {ipc:.4f} LDGSTS/cyc", file=sys.stderr)
