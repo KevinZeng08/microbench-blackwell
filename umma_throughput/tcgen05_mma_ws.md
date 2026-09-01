@@ -8,8 +8,9 @@ GB200（`sm_100`，152 SM，2062 MHz）上 1SM dense `tcgen05.mma.ws` 的流水�
 
 ## TLDR
 
-1. **常见场景（B 不 reuse / discard）下，WS 相对 AS 的收益只在小 M。** 每条 MMA 都从 SMEM 重新 fill B。BF16 TS、N=256、depth=256：64×256 上 `tcgen05.mma.ws` 为 6857 FLOPs/cyc，AS `tcgen05.mma` 为 4080（半 datapath，II 仍是 N/2），**WS 约 1.68×**；128×256 上 WS 7573 vs AS 8161，**WS 约 0.93×，略慢**。M=32 没有同机 AS 对照；discard 时它和 M=64 同一条 II，FLOPs 是 64×256 的一半（3429）。
-2. **B 能 reuse 时才能打满 1SM peak，且相对 discard 的加速在小 M 更大。** `fill / use / lastuse` 之后：64×256 / 128×256 BF16 分别到 8128 / 8160（99%+）。相对 discard，M=32 约 **2.3–3.1×**（32×256 为 2.34×），M=64 约 1.2–1.7×，M=128 约 1.1–1.3×。省略 qualifier = `b0::discard`。
+1. **只用单个 `b0` collector 的 no-reuse / discard 基线下，WS 相对 AS 的收益只在小 M。** 每条 MMA 都从 SMEM 重新 fill B。BF16 TS、N=256、depth=256：64×256 上 `tcgen05.mma.ws` 为 6857 FLOPs/cyc，AS `tcgen05.mma` 为 4080（半 datapath，II 仍是 N/2），**WS 约 1.68×**；128×256 上 WS 7573 vs AS 8161，**WS 约 0.93×，略慢**。M=32 没有同机 AS 对照；单 `b0::discard` 时它和 M=64 同一条 II，FLOPs 是 64×256 的一半（3429）。这不是 no-reuse 场景的上限；显式指定并交替使用 `b0/b1::discard` 后，M=64 也能打满（见第 3 条）。
+2. **单 collector 时，B reuse 可以打满 1SM peak，且相对 discard 的加速在小 M 更大。** `fill / use / lastuse` 之后：64×256 / 128×256 BF16 分别到 8128 / 8160（99%+）。相对单 b0 discard，M=32 约 **2.3–3.1×**（32×256 为 2.34×），M=64 约 1.2–1.7×，M=128 约 1.1–1.3×。省略 qualifier = `b0::discard`。
+3. **M=64 即使每条 B 都不 reuse，也可以用两个 collector ping-pong 打满。** 让同一个 D accumulator 交替发 `b0::discard` / `b1::discard`，BF16 TS 的 N=64/128/256 分别为 **16.50 / 32.50 / 64.50 cyc/MMA**，对齐理想 `N/4`。N=256 即使用两个不同的 B SMEM descriptor 仍为 64.50，排除了同地址特例。只把 D 拆成 D0/D1、仍全走 b0 没有效果。
 
 ---
 
@@ -22,8 +23,8 @@ GB200（`sm_100`，152 SM，2062 MHz）上 1SM dense `tcgen05.mma.ws` 的流水�
 | M | 32, 64, 128 |
 | N | 64, 128, 256 |
 | AB | SS（A 在 SMEM）、TS（A 在 TMEM） |
-| Collector | discard（省略 qualifier = `b0::discard`）、reuse（`b0::fill / use / lastuse`） |
-| 不测 | MX、2SM、`b1–b3` 轮转、idesc B-shift、正确性校验 |
+| Collector | discard（省略 qualifier = `b0::discard`）、双 discard ping-pong（`b0/b1::discard`）、reuse（`b0::fill / use / lastuse`） |
+| 不测 | MX、2SM、`b2/b3`、idesc B-shift、正确性校验 |
 
 每条 MMA 的工作量是 `2MNK` FLOPs。`CyclesPerMMA` = `cycles / (DEPTH × 1000)`。Reuse 每个 batch 的编译期序列（`DEPTH ≥ 2`）：
 
@@ -53,7 +54,16 @@ make umma_ws_tput.out MMA_FORMAT=0 MMA_M=64 MMA_N=256 MMA_K=16 \
 ./umma_ws_tput.out
 ```
 
-`umma_ws_tput.out` 不把宏算进依赖；换配置必须 `make clean`。`benchmark_ws.py` 每个点都会 clean。内核 `umma_ws_tput.cu`，`WS_COLLECTOR=0/1` 是编译期分支。
+`umma_ws_tput.out` 不把宏算进依赖；换配置必须 `make clean`。`benchmark_ws.py` 每个点都会 clean。内核 `umma_ws_tput.cu`，`WS_COLLECTOR=0/1` 是编译期分支。双 discard collector 的复现命令：
+
+```bash
+make -B umma_ws_tput.out MMA_FORMAT=0 MMA_M=64 MMA_N=256 MMA_K=16 \
+    MMA_DEPTH=256 CTA_GROUP=1 AB_LAYOUT=1 WS_COLLECTOR=0 \
+    WS_DISCARD_COLLECTORS=2 WS_B_DESCRIPTORS=2
+./umma_ws_tput.out
+```
+
+`WS_B_DESCRIPTORS=2` 让 b0/b1 从两块不同的 SMEM B tile 读取；设为 1 则两者使用同一个 descriptor。D0/D1 轮转只用于下文的一次性消融，当前 bench 固定使用单 D accumulator。
 
 ---
 
@@ -106,6 +116,40 @@ M=32 的 `N/4+12` **不是**「计算 II（N/8）+ 12」。32 和 64 的 discard
 M=64 AS 走半条 datapath、II 仍是 `N/2`，所以只有 ~4080。WS discard 已经比它快，但还没到 8192。
 
 SS 相对 TS（discard）：M=32 几乎无差；M=64 大约 **+4**；M=128 仅 N=64 大约 **+6**。
+
+### 3.1 双 discard collector ping-pong
+
+单 collector 的 `N/4+12` 不是不可避免的非-reuse 成本。交替指定两个 collector：
+
+```text
+tcgen05.mma.ws...collector::b0::discard [D], [A], B0, idesc, p
+tcgen05.mma.ws...collector::b1::discard [D], [A], B1, idesc, p
+tcgen05.mma.ws...collector::b0::discard [D], [A], B2, idesc, p
+tcgen05.mma.ws...collector::b1::discard [D], [A], B3, idesc, p
+...
+```
+
+每条仍是 `discard`，没有 `fill -> use`，因此不是 B reuse。推断是 b0 参与当前 MMA 时，b1 可以接收下一条 B，反之亦然；两条 fill 路径的开销与 M=64 的计算窗重叠，aggregate II 回到 `N/4`。这是实测解释，不是 PTX 对 microarchitecture overlap 的保证。
+
+BF16 TS、depth=256、单 D accumulator：
+
+| N | b0 only | b0/b1 discard | 理想 II | 双 collector FLOPs/cyc |
+|---:|---:|---:|---:|---:|
+| 64 | 28.4490 | **16.4979** | 16 | 7945 |
+| 128 | 44.4533 | **32.4951** | 32 | 8067 |
+| 256 | 76.4493 | **64.4962** | 64 | 8129 |
+
+N=256 消融：
+
+| D accumulator | collector | B descriptor | II |
+|---|---|---|---:|
+| D0 | b0 | same | 76.4493 |
+| D0/D1 | b0 | same | 76.6994 |
+| D0 | b0/b1 | same | **64.4962** |
+| D0/D1 | b0/b1 | same | **64.4974** |
+| D0 | b0/b1 | distinct B0/B1 | **64.4974** |
+
+所以需要拆的是 **B collector**，不是 accumulator。单 D 保留正常的 K 维累加依赖；第一条 `enable-input-d=false`，后续为 true。由于 MMA 是异步操作，真实 kernel 仍须按其完成机制保护 SMEM B stage 的生命周期，不能因使用 `discard` 就立刻覆盖源数据。
 
 ---
 
@@ -195,7 +239,7 @@ N 大时 SS/TS 重合；看峰值用 TS 即可。
 
 | 项 | 是什么 | 为什么没做 |
 |---|---|---|
-| `b0–b3` 轮转、同一 batch 换 B | WS 有 4 个 B collector。可以 `fill b1` 的同时 `use b0`，或一个 batch 里换不同的 `b_desc`（真·weight-stationary：B 在 collector 里、下一块 B 预填进另一个 buffer）。现在只用 `b0`、整批同一块 SMEM B。 | 第一刀只验证「同一份 B reuse 能不能去掉 +12/+10」。换 B / 多 buffer 是下一级，会混进 descriptor 和 fill 带宽。 |
+| `b2/b3` 与更深 collector schedule | b0/b1 的 `discard` ping-pong 已验证；还可测试四 collector 或把 `fill/use/lastuse` 与下一块 B 的预取组合。 | 两个 collector 已足以让 M=64 回到理想 II，四 buffer 是否对其他形状有收益尚未测。 |
 | idesc `[30:31]` B-shift | 这两位是 `.ws` 专用：「尝试 B reuse 时允许的最大 shift」，0/1/2/3 = 不 shift / 最多 8 / 16 / 32。给卷积滑动窗口用：B 不必整块重填，可以在 collector 里错位再用。本 bench 这两位恒为 0。 | 测的是整 tile 复用，不是 conv 的窗口错位。 |
 | 换 A | 真 WS GEMM 是 B 不动、A 按 M/K 流过。本 bench 的 A（SMEM desc 或 TMEM）在 batch 内固定，DEPTH 条都是同一对 A×B。 | 固定 A 才能把 II 差单独归因到 B collector，不和换 A 的 TMEM/SMEM 流量搅在一起。 |
 | 正确性 / vs cuBLAS | 只记 `clock64`，不读回 D，不对 `D=A*B`。 | 吞吐 microbench；reuse 的 `use` 是否真算满，是靠 II 落到 `MN/256` 间接看的，没有数值对照。 |

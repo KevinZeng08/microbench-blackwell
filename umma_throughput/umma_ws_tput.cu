@@ -6,6 +6,8 @@
 //   MMA_N: 64, 128, 256
 //   AB_LAYOUT: 0=SS (A from SMEM), 1=TS (A from TMEM)
 //   WS_COLLECTOR: 0=b0 discard (default), 1=b0 fill/use/lastuse
+//   WS_DISCARD_COLLECTORS: 1=b0 only, 2=alternate b0/b1 (discard mode only)
+//   WS_B_DESCRIPTORS: 1=same B descriptor, 2=distinct B0/B1 descriptors
 //   CTA_GROUP must be 1
 
 #include <cstdio>
@@ -37,6 +39,12 @@
 #endif
 #ifndef WS_COLLECTOR
 #define WS_COLLECTOR 0
+#endif
+#ifndef WS_DISCARD_COLLECTORS
+#define WS_DISCARD_COLLECTORS 1
+#endif
+#ifndef WS_B_DESCRIPTORS
+#define WS_B_DESCRIPTORS 1
 #endif
 
 #define SS_MODE 0
@@ -85,6 +93,18 @@
 #endif
 #if WS_COLLECTOR == WS_COLLECTOR_REUSE && MMA_DEPTH < 2
 #error "B-collector reuse requires MMA_DEPTH >= 2"
+#endif
+#if WS_DISCARD_COLLECTORS != 1 && WS_DISCARD_COLLECTORS != 2
+#error "WS_DISCARD_COLLECTORS must be 1 or 2"
+#endif
+#if WS_COLLECTOR != WS_COLLECTOR_DISCARD && WS_DISCARD_COLLECTORS != 1
+#error "WS_DISCARD_COLLECTORS=2 is only valid in discard mode"
+#endif
+#if WS_B_DESCRIPTORS != 1 && WS_B_DESCRIPTORS != 2
+#error "WS_B_DESCRIPTORS must be 1 or 2"
+#endif
+#if WS_B_DESCRIPTORS == 2 && WS_DISCARD_COLLECTORS != 2
+#error "Two B descriptors require WS_DISCARD_COLLECTORS=2"
 #endif
 
 enum class MMAFormat : uint8_t {
@@ -241,14 +261,21 @@ void umma_ws_tput_kernel() {
 
     extern __shared__ __align__(128) char smem[];
     auto* A = reinterpret_cast<MT::A::Elem*>(smem);
-    auto* B = reinterpret_cast<MT::B::Elem*>(smem + A_SIZE);
+    auto* B0 = reinterpret_cast<MT::B::Elem*>(smem + A_SIZE);
+#if WS_B_DESCRIPTORS == 2
+    auto* B1 = reinterpret_cast<MT::B::Elem*>(smem + A_SIZE + B_SIZE);
+#endif
 
     constexpr int A_NUMEL = A_SIZE / sizeof(MT::A::Elem);
     constexpr int B_NUMEL = B_SIZE / sizeof(MT::B::Elem);
     for (int i = tid; i < A_NUMEL; i += blockDim.x)
         A[i] = fill_value<MT::A::Elem>(i);
     for (int i = tid; i < B_NUMEL; i += blockDim.x)
-        B[i] = fill_value<MT::B::Elem>(i);
+        B0[i] = fill_value<MT::B::Elem>(i);
+#if WS_B_DESCRIPTORS == 2
+    for (int i = tid; i < B_NUMEL; i += blockDim.x)
+        B1[i] = fill_value<MT::B::Elem>(i + B_NUMEL);
+#endif
 
     barrier_sync();
 
@@ -302,37 +329,57 @@ void umma_ws_tput_kernel() {
     barrier_sync();
 
     constexpr uint32_t i_desc = make_i_desc<static_cast<MMAFormat>(MMA_FORMAT)>();
-    uint64_t b_desc = make_smem_desc(B, MMA_N);
+    uint64_t b_desc0 = make_smem_desc(B0, MMA_N);
+#if WS_B_DESCRIPTORS == 2
+    uint64_t b_desc1 = make_smem_desc(B1, MMA_N);
+#endif
 
 #if AB_LAYOUT == SS_MODE
     uint64_t a_desc = make_smem_desc(A, MMA_M);
-#define ISSUE_MMA_WS(COLLECTOR, pred_var) \
+#define ISSUE_MMA_WS(COLLECTOR, d_tmem, b_desc_arg, pred_var) \
     asm volatile( \
         "{\n\t" \
         ".reg .pred p;\n\t" \
         "setp.ne.b32 p, %4, 0;\n\t" \
         "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND COLLECTOR " [%0], %1, %2, %3, p;\n\t" \
         "}" \
-        :: "r"(tmem_d), "l"(a_desc), "l"(b_desc), "r"(i_desc), "r"(pred_var) \
+        :: "r"(d_tmem), "l"(a_desc), "l"(b_desc_arg), "r"(i_desc), "r"(pred_var) \
     )
 #else
-#define ISSUE_MMA_WS(COLLECTOR, pred_var) \
+#define ISSUE_MMA_WS(COLLECTOR, d_tmem, b_desc_arg, pred_var) \
     asm volatile( \
         "{\n\t" \
         ".reg .pred p;\n\t" \
         "setp.ne.b32 p, %4, 0;\n\t" \
         "tcgen05.mma.ws.cta_group::1.kind::" MMA_KIND COLLECTOR " [%0], [%1], %2, %3, p;\n\t" \
         "}" \
-        :: "r"(tmem_d), "r"(tmem_a), "l"(b_desc), "r"(i_desc), "r"(pred_var) \
+        :: "r"(d_tmem), "r"(tmem_a), "l"(b_desc_arg), "r"(i_desc), "r"(pred_var) \
     )
 #endif
 
 #if WS_COLLECTOR == WS_COLLECTOR_DISCARD
-    auto mma = [&](int pred) { ISSUE_MMA_WS("", pred); };
+    auto mma_b0 = [&](uint32_t d_tmem, int pred) {
+        ISSUE_MMA_WS(".collector::b0::discard", d_tmem, b_desc0, pred);
+    };
+#if WS_DISCARD_COLLECTORS == 2
+    auto mma_b1 = [&](uint32_t d_tmem, int pred) {
+#if WS_B_DESCRIPTORS == 2
+        ISSUE_MMA_WS(".collector::b1::discard", d_tmem, b_desc1, pred);
 #else
-    auto mma_fill = [&](int pred) { ISSUE_MMA_WS(".collector::b0::fill", pred); };
-    auto mma_use = [&](int pred) { ISSUE_MMA_WS(".collector::b0::use", pred); };
-    auto mma_lastuse = [&](int pred) { ISSUE_MMA_WS(".collector::b0::lastuse", pred); };
+        ISSUE_MMA_WS(".collector::b1::discard", d_tmem, b_desc0, pred);
+#endif
+    };
+#endif
+#else
+    auto mma_fill = [&](uint32_t d_tmem, int pred) {
+        ISSUE_MMA_WS(".collector::b0::fill", d_tmem, b_desc0, pred);
+    };
+    auto mma_use = [&](uint32_t d_tmem, int pred) {
+        ISSUE_MMA_WS(".collector::b0::use", d_tmem, b_desc0, pred);
+    };
+    auto mma_lastuse = [&](uint32_t d_tmem, int pred) {
+        ISSUE_MMA_WS(".collector::b0::lastuse", d_tmem, b_desc0, pred);
+    };
 #endif
 
     constexpr int NUM_ITERS = 1000;
@@ -342,18 +389,28 @@ void umma_ws_tput_kernel() {
     for (int iter = 0, phase = 0; iter < NUM_ITERS; iter++) {
         if (warp_id == 0 && elect_sync()) {
 #if WS_COLLECTOR == WS_COLLECTOR_DISCARD
-            mma(0);
+#if WS_DISCARD_COLLECTORS == 1
+            mma_b0(tmem_d, 0);
             #pragma unroll
             for (int m = 1; m < MMA_DEPTH; m++) {
-                mma(1);
+                mma_b0(tmem_d, 1);
             }
 #else
-            mma_fill(0);
+            mma_b0(tmem_d, 0);
+            mma_b1(tmem_d, 1);
+            #pragma unroll
+            for (int m = 2; m < MMA_DEPTH; m += 2) {
+                mma_b0(tmem_d, 1);
+                if (m + 1 < MMA_DEPTH) mma_b1(tmem_d, 1);
+            }
+#endif
+#else
+            mma_fill(tmem_d, 0);
             #pragma unroll
             for (int m = 1; m < MMA_DEPTH - 1; m++) {
-                mma_use(1);
+                mma_use(tmem_d, 1);
             }
-            mma_lastuse(1);
+            mma_lastuse(tmem_d, 1);
 #endif
             asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64 [%0];"
                         :: "r"(mbar_addr) : "memory");
@@ -393,7 +450,7 @@ void umma_ws_tput_kernel() {
 }
 
 int main() {
-    umma_ws_tput_kernel<<<1, 128, A_SIZE + B_SIZE>>>();
+    umma_ws_tput_kernel<<<1, 128, A_SIZE + B_SIZE * WS_B_DESCRIPTORS>>>();
 
     cudaError_t err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
