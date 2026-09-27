@@ -1,0 +1,97 @@
+{
+  "utc": "2026-09-27T14:44:03.481547+00:00",
+  "args": {
+    "patterns": [
+      "allgather",
+      "alltoall"
+    ],
+    "backends": [
+      "nccl",
+      "tma_sym",
+      "tma_mc",
+      "ce_sym",
+      "ce_mc"
+    ],
+    "min_exp": 12,
+    "max_exp": 30,
+    "sizes": [
+      4096,
+      8192,
+      16384,
+      32768,
+      65536,
+      131072,
+      262144,
+      524288,
+      1048576,
+      2097152,
+      4194304,
+      8388608,
+      16777216,
+      33554432,
+      67108864,
+      134217728,
+      268435456,
+      536870912,
+      1073741824
+    ],
+    "ctas": [
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "warmup": 5,
+    "iters": 20,
+    "trials": 5,
+    "eager": false,
+    "peak_gbps": 900.0,
+    "output": "results/cta_grid4/sweep4.csv",
+    "tile_bytes": 16384
+  },
+  "world_size": 4,
+  "torch": "2.9.1",
+  "cuda": "13.1",
+  "nccl": [
+    2,
+    27,
+    5
+  ],
+  "gpu": [
+    "_CudaDeviceProperties(name='NVIDIA GB200', major=10, minor=0, total_memory=188729MB, multi_processor_count=152, uuid=dca52d8e-d448-fdab-3b8e-43cc1cbf806e, pci_bus_id=6, pci_device_id=0, pci_domain_id=8, L2_cache_size=129MB)",
+    "_CudaDeviceProperties(name='NVIDIA GB200', major=10, minor=0, total_memory=188729MB, multi_processor_count=152, uuid=e6fd0253-7a77-5e16-12a3-372e0e523dd6, pci_bus_id=6, pci_device_id=0, pci_domain_id=9, L2_cache_size=129MB)",
+    "_CudaDeviceProperties(name='NVIDIA GB200', major=10, minor=0, total_memory=188729MB, multi_processor_count=152, uuid=5aaa4927-712f-d80c-425d-5472542450fd, pci_bus_id=6, pci_device_id=0, pci_domain_id=24, L2_cache_size=129MB)",
+    "_CudaDeviceProperties(name='NVIDIA GB200', major=10, minor=0, total_memory=188729MB, multi_processor_count=152, uuid=3c9de23d-b55f-cf22-cd2a-363f6a3ab9df, pci_bus_id=6, pci_device_id=0, pci_domain_id=25, L2_cache_size=129MB)"
+  ],
+  "topology": "\t\u001b[4mGPU0\tGPU1\tGPU2\tGPU3\tNIC0\tNIC1\tNIC2\tNIC3\tNIC4\tNIC5\tNIC6\tNIC7\tNIC8\tNIC9\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tNV18\tNV18\tNV18\tNODE\tNODE\tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t0-71\t0\t\tN/A\nGPU1\tNV18\t X \tNV18\tNV18\tNODE\tNODE\tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t0-71\t0\t\tN/A\nGPU2\tNV18\tNV18\t X \tNV18\tSYS\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\tNODE\t72-143\t1\t\tN/A\nGPU3\tNV18\tNV18\tNV18\t X \tSYS\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\tNODE\t72-143\t1\t\tN/A\nNIC0\tNODE\tNODE\tSYS\tSYS\t X \tPIX\tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t\t\t\t\nNIC1\tNODE\tNODE\tSYS\tSYS\tPIX\t X \tNODE\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t\t\t\t\nNIC2\tNODE\tNODE\tSYS\tSYS\tNODE\tNODE\t X \tPIX\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t\t\t\t\nNIC3\tNODE\tNODE\tSYS\tSYS\tNODE\tNODE\tPIX\t X \tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t\t\t\t\nNIC4\tNODE\tNODE\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\t X \tSYS\tSYS\tSYS\tSYS\tSYS\t\t\t\t\nNIC5\tSYS\tSYS\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\t X \tPIX\tNODE\tNODE\tNODE\t\t\t\t\nNIC6\tSYS\tSYS\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\tPIX\t X \tNODE\tNODE\tNODE\t\t\t\t\nNIC7\tSYS\tSYS\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\t X \tPIX\tNODE\t\t\t\t\nNIC8\tSYS\tSYS\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tPIX\t X \tNODE\t\t\t\t\nNIC9\tSYS\tSYS\tNODE\tNODE\tSYS\tSYS\tSYS\tSYS\tSYS\tNODE\tNODE\tNODE\tNODE\t X \t\t\t\t\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n\nNIC Legend:\n\n  NIC0: mlx5_0\n  NIC1: mlx5_1\n  NIC2: mlx5_2\n  NIC3: mlx5_3\n  NIC4: mlx5_4\n  NIC5: mlx5_5\n  NIC6: mlx5_6\n  NIC7: mlx5_7\n  NIC8: mlx5_8\n  NIC9: mlx5_9\n\n",
+  "nvidia_smi": "Sun Sep 27 22:44:04 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 580.126.20             Driver Version: 580.126.20     CUDA Version: 13.1     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA GB200                   On  |   00000008:06:00.0 Off |                    0 |\n| N/A   29C    P0            230W / 1200W |    1167MiB / 189471MiB |      0%      Default |\n|                                         |                        |             Disabled |\n+-----------------------------------------+------------------------+----------------------+\n|   1  NVIDIA GB200                   On  |   00000009:06:00.0 Off |                    0 |\n| N/A   29C    P0            229W / 1200W |    1167MiB / 189471MiB |      0%      Default |\n|                                         |                        |             Disabled |\n+-----------------------------------------+------------------------+----------------------+\n|   2  NVIDIA GB200                   On  |   00000018:06:00.0 Off |                    0 |\n| N/A   29C    P0            211W / 1200W |    1167MiB / 189471MiB |      0%      Default |\n|                                         |                        |             Disabled |\n+-----------------------------------------+------------------------+----------------------+\n|   3  NVIDIA GB200                   On  |   00000019:06:00.0 Off |                    0 |\n| N/A   29C    P0            229W / 1200W |    1167MiB / 189471MiB |      0%      Default |\n|                                         |                        |             Disabled |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|    0   N/A  N/A          436628      C   /usr/local/bin/python3                 1154MiB |\n|    1   N/A  N/A          436629      C   /usr/local/bin/python3                 1154MiB |\n|    2   N/A  N/A          436630      C   /usr/local/bin/python3                 1154MiB |\n|    3   N/A  N/A          436631      C   /usr/local/bin/python3                 1154MiB |\n+-----------------------------------------------------------------------------------------+\n",
+  "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Tue_Dec_16_07:27:17_PM_PST_2025\nCuda compilation tools, release 13.1, V13.1.115\nBuild cuda_13.1.r13.1/compiler.37061995_0\n",
+  "env": {
+    "NCCL_IB_TC": "41",
+    "NCCL_MIN_NCHANNELS": "4",
+    "NCCL_RAS_ENABLE": "0",
+    "NCCL_MNNVL_ENABLE": "1",
+    "TORCH_CUDA_ARCH_LIST": "8.0;8.6;9.0;10.0",
+    "NCCL_SOCKET_IFNAME": "=eth0",
+    "NCCL_NVLS_ENABLE": "0",
+    "NCCL_DEBUG_SUBSYS": "INIT,BOOTSTRAP,ENV,GRAPH,ALGO",
+    "NCCL_DEBUG": "INFO",
+    "NCCL_IB_HCA": "=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_5,mlx5_6,mlx5_7,mlx5_8",
+    "NCCL_IB_GID_INDEX": "3",
+    "NCCL_IB_QPS_PER_CONNECTION": "2",
+    "NCCL_DMABUF_ENABLE": "1",
+    "NCCL_SOCKET_FAMILY": "AF_INET6",
+    "NCCL_IB_TIMEOUT": "23",
+    "NCCL_IB_DATA_DIRECT": "1",
+    "CUDA_HOME": "/usr/local/cuda",
+    "NCCL_IB_RETRY_CNT": "7",
+    "TORCH_NCCL_ASYNC_ERROR_HANDLING": "1"
+  },
+  "sha256": {
+    "benchmark.py": "058805fa61656dc5a5f89c5c1760a87238f23fd6a44ba17e072ec4324dfb3dda",
+    "kernels.cu": "41d9d80f8b1b57e62d563c3244fc3c41d8dd3ebbb2f0a1bcf79bd92575ea7d40",
+    "libnvl_comm.so": "2ceab2b9353c6f1969ef477ab771eb20888332f100da11feab766d3fdad0f2f9"
+  },
+  "timing": "median of per-trial max-rank CUDA-event average, two symmetric barriers per op"
+}
