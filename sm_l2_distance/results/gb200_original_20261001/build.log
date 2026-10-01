@@ -1,0 +1,3 @@
+make: Entering directory '/opt/tiger/microbench-blackwell/sm_l2_distance'
+nvcc -O2 -std=c++17 -gencode=arch=compute_100a,code=\"sm_100a,compute_100a\" -DNUM_SMS=152 -o /opt/tiger/microbench-blackwell/sm_l2_distance/results/gb200_original_20261001/l2_pointer_chase l2_pointer_chase.cu
+make: Leaving directory '/opt/tiger/microbench-blackwell/sm_l2_distance'

@@ -1,0 +1,7 @@
+Saved → results/distance_sm_distance.png
+SM-SM distance: mean=187.7  min=51.7  max=306.5
+Intra-GPC: 79.0  Inter-GPC: 201.8
+Same-die inter-GPC: 87.6  Cross-die: 288.3
+
+Die A: [9, 10, 10, 9] TPCs  (GPC1, GPC2, GPC3, GPC4, 76 SMs)
+Die B: [6, 10, 10, 10, 1, 1] TPCs  (GPC0, GPC5, GPC6, GPC7, GPC8*, GPC9*, 76 SMs)

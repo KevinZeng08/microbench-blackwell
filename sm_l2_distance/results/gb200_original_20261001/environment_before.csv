@@ -1,0 +1,5 @@
+index, uuid, name, pci.bus_id, driver_version, clocks.current.sm [MHz], power.limit [W], utilization.gpu [%], memory.used [MiB]
+0, GPU-dca52d8e-d448-fdab-3b8e-43cc1cbf806e, NVIDIA GB200, 00000008:06:00.0, 580.126.20, 2062 MHz, 1200.00 W, 0 %, 0 MiB
+1, GPU-e6fd0253-7a77-5e16-12a3-372e0e523dd6, NVIDIA GB200, 00000009:06:00.0, 580.126.20, 2062 MHz, 1200.00 W, 0 %, 0 MiB
+2, GPU-5aaa4927-712f-d80c-425d-5472542450fd, NVIDIA GB200, 00000018:06:00.0, 580.126.20, 2062 MHz, 1200.00 W, 0 %, 0 MiB
+3, GPU-3c9de23d-b55f-cf22-cd2a-363f6a3ab9df, NVIDIA GB200, 00000019:06:00.0, 580.126.20, 2062 MHz, 1200.00 W, 0 %, 0 MiB

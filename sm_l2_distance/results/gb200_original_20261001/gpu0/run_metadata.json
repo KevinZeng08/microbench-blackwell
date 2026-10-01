@@ -1,0 +1,10 @@
+{
+  "gpu": 0,
+  "elapsed_seconds": 131.97564121801406,
+  "command": [
+    "/opt/tiger/microbench-blackwell/sm_l2_distance/results/gb200_original_20261001/l2_pointer_chase"
+  ],
+  "CUDA_VISIBLE_DEVICES": "0",
+  "passes": 5,
+  "source_change": "NUM_SMS 148 -> 152 only"
+}

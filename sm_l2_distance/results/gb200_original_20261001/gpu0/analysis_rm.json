@@ -1,0 +1,38 @@
+{
+  "gpu": 0,
+  "sm_count": 152,
+  "passes": 5,
+  "first_pass_coverage": "152/152",
+  "pair_statistics": {
+    "same_tpc": {
+      "pairs": 76,
+      "mean": 67.91184210526315,
+      "median": 68.1,
+      "p10": 62.4,
+      "p90": 75.05000000000001
+    },
+    "same_gpc": {
+      "pairs": 1376,
+      "mean": 73.74491279069767,
+      "median": 73.65,
+      "p10": 63.75,
+      "p90": 83.8
+    },
+    "same_die_different_gpc": {
+      "pairs": 4340,
+      "mean": 82.63380184331797,
+      "median": 82.7,
+      "p10": 73.1,
+      "p90": 92.2
+    },
+    "cross_die": {
+      "pairs": 5760,
+      "mean": 294.11642361111114,
+      "median": 294.55,
+      "p10": 286.9,
+      "p90": 300.7
+    }
+  },
+  "two_cluster_agreement_with_rm": 1.0,
+  "mean_latency_across_sms": 721.9381578947368
+}

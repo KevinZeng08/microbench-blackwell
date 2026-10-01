@@ -1,0 +1,5 @@
+--- HEAD/l2_pointer_chase.cu
++++ l2_pointer_chase.cu
+@@ -25 +25 @@
+-#define NUM_SMS 148
++#define NUM_SMS 152
